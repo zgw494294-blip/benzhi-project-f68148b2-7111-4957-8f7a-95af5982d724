@@ -87,16 +87,28 @@ func (r *Repository) Save(record domain.CaseRecord, expectedVersion int64, idemp
 		return domain.CaseRecord{}, false, err
 	}
 	event.Digest = digest
-	if err := appendEvent(r.logPath, event); err != nil {
+	offset, err := appendEvent(r.logPath, event)
+	if err != nil {
 		return domain.CaseRecord{}, false, err
+	}
+	prevSequence, prevDigest := r.sequence, r.lastDigest
+	var prevRecord domain.CaseRecord
+	hadRecord := false
+	if existing, ok := r.cases[event.CaseID]; ok {
+		prevRecord, hadRecord = existing, true
 	}
 	r.sequence, r.lastDigest = event.Sequence, event.Digest
 	r.cases[event.CaseID] = record
 	r.idempotent[index] = record
+	prevCredentialCaseID, hadCredential := "", false
 	if record.Credential != nil {
+		if existing, ok := r.credentialIndex[record.Credential.CredentialID]; ok {
+			prevCredentialCaseID, hadCredential = existing, true
+		}
 		r.credentialIndex[record.Credential.CredentialID] = record.Case.CaseID
 	}
 	if err := r.persistSnapshot(); err != nil {
+		r.rollbackAppend(event.CaseID, index, prevSequence, prevDigest, prevRecord, hadRecord, record.Credential, prevCredentialCaseID, hadCredential, offset)
 		return domain.CaseRecord{}, false, err
 	}
 	clone, err := domain.CloneRecord(record)
@@ -161,6 +173,31 @@ func (r *Repository) persistSnapshot() error {
 		copied[id] = record
 	}
 	return writeSnapshot(r.snapshotPath, snapshotPayload{Sequence: r.sequence, LastDigest: r.lastDigest, Cases: copied})
+}
+
+// rollbackAppend reverts the in-memory mutation and the durable event log
+// after appendEvent succeeded but a subsequent step (the projection
+// snapshot) failed. It must be invoked while holding r.mu. The parameters
+// capture the values that predated the append so the repository returns to
+// the same observable state it had before Save was attempted, leaving no
+// case, idempotency cache entry, or event behind for GetCase, retries, or
+// recovery to observe.
+func (r *Repository) rollbackAppend(caseID, index string, prevSequence int64, prevDigest string, prevRecord domain.CaseRecord, hadRecord bool, credential *domain.DatingCredential, prevCredentialCaseID string, hadCredential bool, offset int64) {
+	r.sequence, r.lastDigest = prevSequence, prevDigest
+	if hadRecord {
+		r.cases[caseID] = prevRecord
+	} else {
+		delete(r.cases, caseID)
+	}
+	delete(r.idempotent, index)
+	if credential != nil {
+		if hadCredential {
+			r.credentialIndex[credential.CredentialID] = prevCredentialCaseID
+		} else {
+			delete(r.credentialIndex, credential.CredentialID)
+		}
+	}
+	_ = truncateLastEvent(r.logPath, offset)
 }
 
 func (r *Repository) rebuildCredentialIndex() {
