@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"syscall"
 )
 
 func appendEvent(path string, event Event) error {
@@ -22,6 +23,23 @@ func appendEvent(path string, event Event) error {
 		return err
 	}
 	return file.Sync()
+}
+
+// exclusiveLock 对给定文件路径加排他锁，用于在多个服务实例之间协调事件写入。
+// 返回的释放函数必须被调用以释放锁。
+func exclusiveLock(path string) (func(), error) {
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX); err != nil {
+		file.Close()
+		return nil, err
+	}
+	return func() {
+		_ = syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
+		_ = file.Close()
+	}, nil
 }
 
 func readEvents(path string) ([]Event, error) {

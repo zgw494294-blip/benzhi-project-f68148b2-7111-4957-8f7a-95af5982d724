@@ -17,6 +17,7 @@ type Repository struct {
 	dir             string
 	logPath         string
 	snapshotPath    string
+	lockPath        string
 	cases           map[string]domain.CaseRecord
 	idempotent      map[string]domain.CaseRecord
 	credentialIndex map[string]string
@@ -31,7 +32,7 @@ func Open(dir string) (*Repository, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
-	repo := &Repository{dir: dir, logPath: filepath.Join(dir, "events.jsonl"), snapshotPath: filepath.Join(dir, "projection.json")}
+	repo := &Repository{dir: dir, logPath: filepath.Join(dir, "events.jsonl"), snapshotPath: filepath.Join(dir, "projection.json"), lockPath: filepath.Join(dir, ".write.lock")}
 	events, err := readEvents(repo.logPath)
 	if err != nil {
 		return nil, err
@@ -61,6 +62,16 @@ func (r *Repository) Save(record domain.CaseRecord, expectedVersion int64, idemp
 	defer r.mu.Unlock()
 	if strings.TrimSpace(idempotencyKey) == "" {
 		return domain.CaseRecord{}, false, domain.Invalid("idempotencyKey", "不能为空")
+	}
+	release, err := exclusiveLock(r.lockPath)
+	if err != nil {
+		return domain.CaseRecord{}, false, err
+	}
+	defer release()
+	// 多实例共享同一数据目录时，本实例在打开后到写入前可能已有其他实例追加事件。
+	// 因此在持有跨进程锁后重新读取日志并重放，使序号、摘要链与幂等索引回到最新状态。
+	if err := r.resyncFromLog(); err != nil {
+		return domain.CaseRecord{}, false, err
 	}
 	index := idempotencyIndex(record.Case.CaseID, idempotencyKey)
 	if prior, ok := r.idempotent[index]; ok {
@@ -101,6 +112,23 @@ func (r *Repository) Save(record domain.CaseRecord, expectedVersion int64, idemp
 	}
 	clone, err := domain.CloneRecord(record)
 	return clone, false, err
+}
+
+// resyncFromLog 重新读取事件日志并重放，用最新的权威状态覆盖本实例的内存状态。
+// 调用方必须已经持有跨进程锁 r.lockPath，避免重放期间其他实例继续追加事件。
+func (r *Repository) resyncFromLog() error {
+	events, err := readEvents(r.logPath)
+	if err != nil {
+		return err
+	}
+	state, err := replay(events)
+	if err != nil {
+		return err
+	}
+	r.cases, r.idempotent = state.cases, state.idempotent
+	r.sequence, r.lastDigest = state.sequence, state.digest
+	r.rebuildCredentialIndex()
+	return nil
 }
 
 func (r *Repository) Get(caseID string) (domain.CaseRecord, error) {
