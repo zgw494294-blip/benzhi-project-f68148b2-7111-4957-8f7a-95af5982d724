@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="木年轮定年证据发布台">
+  <title>木年轮定年证据发布台</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div><p class="eyebrow">DENDROCHRONOLOGY EVIDENCE DESK</p><h1>木年轮定年证据发布台</h1></div>
+    <div class="actor-box"><label for="actor">当前操作人</label><input id="actor" value="测量员-甲"><span id="connection" class="badge">正在连接</span></div>
+  </header>
+  <main>
+    <nav class="steps" aria-label="业务流程"><span>1 建档</span><span>2 序列</span><span>3 分析</span><span>4 争议</span><span>5 复核</span><span>6 冻结</span><span>7 发布</span></nav>
+    <section class="layout">
+      <aside class="panel sidebar">
+        <div class="panel-title"><h2>鉴定档案</h2><button id="refreshCases" class="quiet">刷新</button></div>
+        <form id="queueForm" class="stack compact"><label>阶段筛选<select name="status"><option value="">全部阶段</option><option>Draft</option><option>SeriesSubmitted</option><option>NeedsCorrection</option><option>Analyzed</option><option>UnderReview</option><option>Approved</option><option>Frozen</option><option>Published</option></select></label><label>遗址包含<input name="site"></label><label>构件编号<input name="structureRef"></label><label><input name="hasUnresolvedBlocking" type="checkbox"> 仅未解决阻断项</label><button>应用筛选</button></form>
+        <div id="queueStats" class="data-box"></div>
+        <div id="caseList" class="case-list"></div>
+        <button id="nextPage" class="quiet full" disabled>下一页</button>
+        <button id="showCreate" class="primary full">＋ 建立新档案</button>
+      </aside>
+      <div class="workspace">
+        <section id="createPanel" class="panel">
+          <div class="panel-title"><div><p class="kicker">档案向导</p><h2>建立木芯鉴定档案</h2></div></div>
+          <form id="createForm" class="form-grid">
+            <label>遗址名称<input name="siteName" required value="永宁古建群"></label>
+            <label>构件编号<input name="structureRef" required value="正殿-西檩-07"></label>
+            <label>采样位置<input name="samplingPosition" required value="西端距榫卯 32cm"></label>
+            <label>树种判断<input name="speciesAssessment" required value="松属（初判）"></label>
+            <label>采样日期<input name="sampledAt" type="date" required></label>
+            <label>最小重叠年数<input name="minimumOverlap" type="number" min="5" value="20" required></label>
+            <button class="primary" type="submit">建立 Draft 档案</button>
+          </form>
+        </section>
+        <section id="detailPanel" class="hidden">
+          <article class="panel hero"><div><p class="kicker" id="caseID"></p><h2 id="caseTitle"></h2><p id="caseMeta" class="muted"></p></div><div><span id="caseStatus" class="status"></span><p id="caseVersion" class="version"></p></div></article>
+          <section id="metadataPanel" class="panel"><div class="panel-title"><h3>Draft 档案校订与重复采样提示</h3></div><form id="metadataForm" class="form-grid"><label>遗址名称<input name="siteName" required></label><label>构件编号<input name="structureRef" required></label><label>采样位置<input name="samplingPosition" required></label><label>树种判断<input name="speciesAssessment" required></label><label>采样日期<input name="sampledAt" type="date" required></label><label>最小重叠年数<input name="minimumOverlap" type="number" min="5" max="500" required></label><label>校订理由<input name="reason" required></label><label>疑似重复确认理由<input name="duplicateConfirmationReason" placeholder="仅有候选时必填"></label><button id="duplicateBtn" type="button">检查重复采样</button><button class="primary">保存校订</button></form><div id="duplicateInfo" class="data-box"></div></section>
+          <div class="two-col">
+            <section class="panel"><div class="panel-title"><h3>年轮序列修订</h3><span id="revisionCount" class="badge"></span></div>
+              <form id="seriesForm" class="stack"><div class="row"><label>测量单位<select name="unit"><option>mm</option><option>0.01mm</option></select></label><label>起始方向<select name="measurementDirection"><option value="pith-to-bark">髓心 → 树皮</option><option value="bark-to-pith">树皮 → 髓心</option></select></label></div><label>逐轮宽度（逗号、空格或逐行）<textarea name="widths" rows="5" required></textarea></label><label>修订理由<input name="changeReason" value="首版测量录入" required></label><div class="row"><button id="preflightBtn" type="button">预检与父版差异</button><button id="seriesSubmitBtn" class="primary" type="submit" disabled>确认并提交不可变修订</button></div></form><div id="preflightInfo" class="data-box"></div>
+              <div id="revisionInfo" class="data-box"></div>
+            </section>
+            <section class="panel"><div class="panel-title"><h3>交叉定年结果与历史</h3><button id="analyzeBtn" class="primary">确定性复算</button></div><div id="analysisInfo" class="empty">提交序列后可执行分析。</div><div id="candidateTable"></div><div class="row"><select id="firstRun"></select><select id="secondRun"></select><button id="compareRuns">对比运行</button></div><div id="runComparison" class="data-box"></div></section>
+          </div>
+          <div class="two-col">
+            <section class="panel"><div class="panel-title"><h3>争议处置</h3><span id="flagCount" class="badge"></span></div><div id="flags"></div><form id="batchDisputeForm" class="stack"><label>共享证据引用（逗号分隔）<input name="evidenceRefs"></label><button class="primary">原子批量解释已选提示</button></form></section>
+            <section class="panel"><div class="panel-title"><h3>结构化独立复核</h3></div><p class="muted">复核员必须与最近序列提交者不同，逐项决定绑定当前档案、修订和分析。</p><div class="actions"><button id="startReviewBtn">提交复核</button></div><form id="reviewChecklist" class="stack"></form><div id="remediations" class="data-box"></div><div id="reviewInfo" class="data-box"></div></section>
+          </div>
+          <div class="two-col">
+            <section class="panel"><div class="panel-title"><h3>冻结清单</h3><button id="previewBtn">预览</button></div><div id="manifestInfo" class="data-box"></div><button id="freezeBtn" class="primary full">冻结证据</button></section>
+            <section class="panel"><div class="panel-title"><h3>定年结论凭据</h3></div><div id="credentialInfo" class="data-box"></div><button id="publishBtn" class="primary full">签发并发布</button></section>
+          </div>
+          <section class="panel"><div class="panel-title"><h3>审计时间线</h3></div><ol id="timeline" class="timeline"></ol></section>
+        </section>
+        <section class="panel verify"><div><p class="kicker">公开校验</p><h2>定年凭据混合批量验证</h2><p class="muted">每行输入一个凭据编号或单行完整 JSON；最多 50 项，保持重复位置与输入顺序。</p></div><form id="verifyForm" class="stack"><textarea name="entries" rows="8" placeholder="DENDRO-…&#10;{&quot;credentialID&quot;:&quot;…&quot;}"></textarea><button class="primary">批量验证真实性与当前状态</button></form><div id="verifyResult"></div></section>
+      </div>
+    </section>
+  </main>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>
